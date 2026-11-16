@@ -4,9 +4,29 @@
 
 ## プロジェクト概要
 
-- 名称: waste-inventry-management-app（廃棄物在庫管理アプリ）
-- 状態: 初期セットアップ段階（ソースコードはまだありません）
-- 技術スタック・ビルド/テストコマンドが決まり次第、このファイルに追記してください。
+- 名称: ベール在庫・製造・出荷計画アプリ（waste-inventry-management-app）
+- 目的: 実在庫・2週間の出荷予定・製造能力から、日別・午前午後別の製造数と圧縮梱包機の運転時間を提案する
+- 状態: 計画計算ロジックの試作段階（UI・SQLite保存は未着手）
+- 仕様・確定済みの計算ルール: [docs/spec.md](docs/spec.md)（仕様変更時はここも更新する）
+- 技術: Python 3.12 / jpholiday / pytest。将来は Windows タブレット1台・オフライン・SQLite
+
+## 構成
+
+- `bale_planner/planner.py` — 計画計算の中心（`build_plan`）。UI から独立した純粋ロジックに保つ
+- `bale_planner/workcalendar.py` — 製造可能日・出荷可能日の判定
+- `bale_planner/models.py` — データ構造（SQLite のテーブルに移せる形）
+- `bale_planner/scenarios.py` — ダミーデータとテストシナリオ
+- `bale_planner/cli.py` — 確認用のコンソール表示
+
+## コマンド
+
+```sh
+python -m venv .venv && .venv/Scripts/python -m pip install -r requirements.txt
+.venv/Scripts/python -m pytest -q                         # テスト
+.venv/Scripts/python -m bale_planner.cli normal --compare # シナリオを両モードで表示
+```
+
+ロジックを変更したら必ずテストを実行し、全件成功を確認してからコミットする。
 
 ## Git 運用ルール
 

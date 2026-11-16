@@ -1,0 +1,10 @@
+[project]
+name = "bale-planner"
+version = "0.1.0"
+description = "ベール在庫・製造・出荷計画アプリ（試作）"
+requires-python = ">=3.11"
+dependencies = ["jpholiday"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
