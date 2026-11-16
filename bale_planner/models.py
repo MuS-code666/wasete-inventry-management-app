@@ -68,6 +68,7 @@ class Carrier:
     name: str
     standard_load: int  # 1台当たりのベール数
     active: bool = True
+    id: int | None = None
 
 
 @dataclass
@@ -79,6 +80,7 @@ class Shipment:
     carrier: Carrier
     trucks: int
     quantity_override: int | None = None  # 手動修正した出荷予定数
+    id: int | None = None
 
     @property
     def quantity(self) -> int:
