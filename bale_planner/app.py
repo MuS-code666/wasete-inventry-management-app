@@ -9,15 +9,19 @@ from __future__ import annotations
 
 import argparse
 import datetime as dt
+import sys
+from pathlib import Path
 import tkinter as tk
 import tkinter.font as tkfont
 from tkinter import messagebox, ttk
 
+from . import __version__
 from . import workcalendar as wc
 from .db import Repository, default_db_path
 from .models import Carrier, Mode, Settings, Shipment, Slot, StockReading, StockTiming, fmt_minutes
 from .service import PlanView, compute, seed_demo
 
+ICON_PATH = Path(__file__).resolve().parent / "assets" / "app.ico"
 FONT = "Yu Gothic UI"
 WEEKDAYS = "月火水木金土日"
 
@@ -248,7 +252,11 @@ class App(tk.Tk):
         self.repo = repo
         self.today = today or dt.date.today()
         self.view: PlanView | None = None
-        self.title("ベール製造計画")
+        self.title(f"ベール製造計画  v{__version__}")
+        try:
+            self.iconbitmap(default=str(ICON_PATH))
+        except tk.TclError:
+            pass
         self.configure(bg=BG)
         self.geometry("1280x800")
         self.minsize(1024, 700)
@@ -1153,13 +1161,67 @@ class SettingsScreen(Screen):
 # ---------------------------------------------------------------------------
 
 
+def self_check(out_path: str) -> int:
+    """配布した exe が他の PC で動くかを、画面を出さずに確認する。
+
+    祝日判定（jpholiday の同梱）、SQLite、計画計算、Tk の起動を順に試し、結果を書き出す。
+    """
+    import tempfile
+    import traceback
+
+    lines = [f"version: {__version__}", f"frozen: {getattr(sys, 'frozen', False)}"]
+    ok = True
+
+    def step(name, fn):
+        nonlocal ok
+        try:
+            lines.append(f"OK   {name}: {fn()}")
+        except Exception:
+            ok = False
+            lines.append(f"FAIL {name}:\n{traceback.format_exc()}")
+
+    step("jpholiday", lambda: f"2026-11-23 祝日={not wc.is_production_day(dt.date(2026, 11, 23))}")
+
+    def db_and_plan():
+        with tempfile.TemporaryDirectory() as tmp:
+            repo = Repository(Path(tmp) / "check.db")
+            seed_demo(repo, dt.date(2026, 11, 16))
+            v = compute(repo, dt.date(2026, 11, 16))
+            repo.close()
+            return f"{len(v.plan.days)}日分の計画, 警告{len(v.plan.warnings)}件"
+
+    step("sqlite+planner", db_and_plan)
+
+    def tk_start():
+        app = App(Repository(), dt.date(2026, 11, 16))
+        app.withdraw()
+        app.update()
+        app.destroy()
+        return "画面の初期化に成功"
+
+    step("tkinter", tk_start)
+    step("icon", lambda: f"{ICON_PATH.exists()}")
+    lines.append("RESULT: " + ("OK" if ok else "FAIL"))
+    Path(out_path).write_text("\n".join(lines), encoding="utf-8")
+    return 0 if ok else 1
+
+
 def main(argv=None):
     p = argparse.ArgumentParser(description="ベール製造計画アプリ")
     p.add_argument("--db", help="データベースファイル（省略時は %%LOCALAPPDATA%%/BalePlanner）")
     p.add_argument("--demo", action="store_true", help="デモデータ入りの一時データベースで起動")
     p.add_argument("--today", help="今日の日付を指定（動作確認用） YYYY-MM-DD")
     p.add_argument("--fullscreen", action="store_true", help="全画面で起動（F11で切替）")
+    p.add_argument("--check", metavar="FILE", help="起動せずに動作確認し、結果を FILE に書いて終了（配布後の確認用）")
+    p.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
+    if sys.stdout is None:  # exe（ウィンドウ版）では標準出力がないため、--help 等の出力先を用意する
+        import os
+
+        sys.stdout = sys.stderr = open(os.devnull, "w")
     args = p.parse_args(argv)
+
+    if args.check:
+        sys.exit(self_check(args.check))
 
     try:  # 高DPIのタブレットで文字がぼやけないようにする
         import ctypes

@@ -19,6 +19,7 @@
 - `bale_planner/cli.py` — 確認用のコンソール表示
 - `bale_planner/db.py` — SQLite 保存（`Repository`）
 - `bale_planner/service.py` — DB から計画を再計算（`compute`）
+- `installer/` — 配布用（PyInstaller で exe 化 → Inno Setup でインストーラ化）。手順は [docs/install.md](docs/install.md)
 - `bale_planner/app.py` — タッチ操作向け画面。処理は `App` のメソッドに置き、ダイアログはその呼び出しだけにする（テストでダイアログを開かずに検証するため）
 
 ## コマンド
@@ -29,8 +30,11 @@ python -m venv .venv && .venv/Scripts/python -m pip install -r requirements.txt
 .venv/Scripts/python -m bale_planner.cli normal --compare # シナリオを両モードで表示
 .venv/Scripts/python -m bale_planner.app --demo           # デモデータで画面を起動（DBは一時）
 .venv/Scripts/python -m bale_planner.app                  # 通常起動（%LOCALAPPDATA%/BalePlanner に保存）
+build_installer.bat                                       # インストーラ作成 → dist/BalePlanner-Setup-<version>.exe
 ```
 
+リリース時は `bale_planner/__init__.py` の `__version__` を上げてからインストーラを作成する。
+開発PCはスマートアプリコントロールが有効で、署名のない exe がブロックされることがある（ビルドの動作確認は警告を出してスキップされる）。
 ロジックを変更したら必ずテストを実行し、全件成功を確認してからコミットする。
 画面を変更したら実際に起動して表示を確認する（高DPIで行の高さや折り返しが崩れやすい。サイズはフォント高さ基準で決める）。
 
