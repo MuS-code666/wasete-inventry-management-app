@@ -15,7 +15,7 @@ from tkinter import messagebox, ttk
 
 from . import workcalendar as wc
 from .db import Repository, default_db_path
-from .models import Carrier, Mode, Settings, Shipment, Slot, StockReading, StockTiming
+from .models import Carrier, Mode, Settings, Shipment, Slot, StockReading, StockTiming, fmt_minutes
 from .service import PlanView, compute, seed_demo
 
 FONT = "Yu Gothic UI"
@@ -351,7 +351,7 @@ class App(tk.Tk):
         sp = getattr(self.view.plan.day(date), "am" if slot is Slot.AM else "pm")
         st = self.repo.get_settings()
         info = (
-            f"{fmt_date(date)} {slot.label}　現在の計画: {sp.production} ベール（{sp.total_minutes} 分）\n"
+            f"{fmt_date(date)} {slot.label}　現在の計画: {sp.production} ベール（運転 {fmt_minutes(sp.total_minutes)}）\n"
             f"能力 {st.bales_per_hour:g} ベール/時。確定すると翌日以降を自動で再計算します。"
         )
         res = NumberDialog(self, f"{slot.label}の製造数を変更", initial=sp.production, info=info, max_value=999).show()
@@ -386,34 +386,42 @@ class MainScreen(Screen):
 
         grid = tk.Frame(self, bg=BG)
         grid.pack(fill="both", expand=True)
-        grid.columnconfigure((0, 1, 2), weight=1, uniform="c")
+        grid.columnconfigure((0, 1, 2, 3), weight=1, uniform="c")
         grid.rowconfigure(1, weight=1)
 
+        # 1日の流れの順に並べる: 始業時の在庫 → 出荷 → 製造 → 終業時の在庫
+        c0 = card(grid, "始業時の在庫")
+        c0.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+        self.start_big = tk.Label(c0, font=f(30, "bold"), bg=CARD, fg=TEXT)
+        self.start_big.pack(anchor="w")
+        self.start_detail = tk.Label(c0, font=f(14), bg=CARD, fg=MUTED, justify="left", anchor="w")
+        self.start_detail.pack(anchor="w", fill="x")
+
         c1 = card(grid, "出荷予定")
-        c1.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
-        self.ship_big = tk.Label(c1, font=f(34, "bold"), bg=CARD, fg=TEXT)
+        c1.grid(row=0, column=1, sticky="nsew", padx=8)
+        self.ship_big = tk.Label(c1, font=f(30, "bold"), bg=CARD, fg=TEXT)
         self.ship_big.pack(anchor="w")
         self.ship_detail = tk.Label(c1, font=f(14), bg=CARD, fg=TEXT, justify="left", anchor="w")
         self.ship_detail.pack(anchor="w", fill="x")
 
         c2 = card(grid, "推奨製造")
-        c2.grid(row=0, column=1, sticky="nsew", padx=8)
-        self.prod_big = tk.Label(c2, font=f(34, "bold"), bg=CARD, fg=PRIMARY)
+        c2.grid(row=0, column=2, sticky="nsew", padx=8)
+        self.prod_big = tk.Label(c2, font=f(30, "bold"), bg=CARD, fg=PRIMARY)
         self.prod_big.pack(anchor="w")
-        self.prod_am = tk.Label(c2, font=f(15), bg=CARD, fg=TEXT, anchor="w")
+        self.prod_am = tk.Label(c2, font=f(14), bg=CARD, fg=TEXT, anchor="w", justify="left")
         self.prod_am.pack(anchor="w", fill="x")
-        self.prod_pm = tk.Label(c2, font=f(15), bg=CARD, fg=TEXT, anchor="w")
+        self.prod_pm = tk.Label(c2, font=f(14), bg=CARD, fg=TEXT, anchor="w", justify="left")
         self.prod_pm.pack(anchor="w", fill="x")
 
         c3 = card(grid, "終業時の予測在庫")
-        c3.grid(row=0, column=2, sticky="nsew", padx=(8, 0))
-        self.inv_big = tk.Label(c3, font=f(34, "bold"), bg=CARD, fg=TEXT)
+        c3.grid(row=0, column=3, sticky="nsew", padx=(8, 0))
+        self.inv_big = tk.Label(c3, font=f(30, "bold"), bg=CARD, fg=TEXT)
         self.inv_big.pack(anchor="w")
         self.inv_detail = tk.Label(c3, font=f(14), bg=CARD, fg=MUTED, justify="left", anchor="w")
         self.inv_detail.pack(anchor="w", fill="x")
 
         c4 = card(grid, "警告・お知らせ")
-        c4.grid(row=1, column=0, columnspan=3, sticky="nsew", pady=(12, 0))
+        c4.grid(row=1, column=0, columnspan=4, sticky="nsew", pady=(12, 0))
         self.warn_box = tk.Frame(c4, bg=CARD)
         self.warn_box.pack(fill="both", expand=True)
 
@@ -446,9 +454,9 @@ class MainScreen(Screen):
         if v is None:
             self.target = None
             self._banner("実在庫がまだ入力されていません。「実在庫を入力」から登録してください。")
-            for lbl in (self.ship_big, self.prod_big, self.inv_big):
+            for lbl in (self.start_big, self.ship_big, self.prod_big, self.inv_big):
                 lbl.configure(text="—")
-            for lbl in (self.ship_detail, self.prod_am, self.prod_pm, self.inv_detail):
+            for lbl in (self.start_detail, self.ship_detail, self.prod_am, self.prod_pm, self.inv_detail):
                 lbl.configure(text="")
             self.day_label.configure(text="")
             return
@@ -467,10 +475,15 @@ class MainScreen(Screen):
         if not wc.is_production_day(self.target, self.app.repo.get_overrides()):
             self._banner(f"{fmt_date(self.target)} は休業日です。")
 
+        start_inv, source = self._start_inventory(v)
+        self.start_big.configure(text=f"{start_inv} ベール")
+        self.start_detail.configure(text=source)
+
         ships = [s for s in v.shipments if s.date == self.target]
         trucks = sum(s.trucks for s in ships)
-        self.ship_big.configure(text=f"{trucks} 台 / {day.shipment} ベール" if ships else "出荷なし")
-        lines = [f"{s.slot.label}  {s.carrier.name} {s.trucks}台  {s.quantity} ベール" for s in ships]
+        self.ship_big.configure(text=f"{day.shipment} ベール" if ships else "出荷なし")
+        lines = [f"トラック {trucks} 台"] if ships else []
+        lines += [f"{s.slot.label}  {s.carrier.name} {s.trucks}台  {s.quantity}" for s in ships]
         for sp in (day.am, day.pm):
             if sp.shortage:
                 lines.append(f"⚠ {sp.slot.label}は {sp.shortage} ベール不足")
@@ -500,18 +513,29 @@ class MainScreen(Screen):
         locked = day.am.locked or day.pm.locked
         self.btn_auto.configure(state="normal" if locked else "disabled")
 
+    def _start_inventory(self, v: PlanView) -> tuple[int, str]:
+        """表示日の始業時の在庫と、その根拠（実在庫の入力値か予測か）。"""
+        plan = v.plan
+        if self.target == plan.days[0].date:
+            if v.start_source is StockTiming.START:
+                return plan.start_inventory, "実在庫（始業時に入力）"
+            return plan.start_inventory, "実在庫（前日終業時に入力）"
+        prev = plan.days[[d.date for d in plan.days].index(self.target) - 1]
+        return prev.inventory_end, "予測（実在庫が未入力）"
+
     def _slot_text(self, sp):
         if not sp.production:
             return f"{sp.slot.label}  製造なし" + ("（手動）" if sp.locked else "")
         extra = []
         if sp.overtime_minutes:
-            extra.append(f"うち残業 {sp.overtime_minutes} 分")
+            extra.append(f"うち残業 {fmt_minutes(sp.overtime_minutes)}")
         if sp.holiday_minutes:
             extra.append("休日出勤")
         if sp.locked:
             extra.append("手動")
-        tail = f"（{'・'.join(extra)}）" if extra else ""
-        return f"{sp.slot.label}  {sp.production} ベール  運転 {sp.total_minutes} 分{tail}"
+        # 狭いカードでも切れないよう、補足は改行して表示する
+        tail = "\n　　（" + "・".join(extra) + "）" if extra else ""
+        return f"{sp.slot.label}  {sp.production} ベール  運転 {fmt_minutes(sp.total_minutes)}{tail}"
 
     def _warn_line(self, w, prefix):
         err = w.level == "error"
@@ -539,8 +563,8 @@ class MainScreen(Screen):
 
 class PlanScreen(Screen):
     COLS = [
-        ("date", "日付", 110), ("am_ship", "午前出荷", 250), ("am_prod", "午前製造", 160), ("am_inv", "午前末", 70),
-        ("pm_ship", "午後出荷", 250), ("pm_prod", "午後製造", 190), ("pm_inv", "終業在庫", 80),
+        ("date", "日付", 110), ("am_ship", "午前出荷", 220), ("am_prod", "午前製造", 190), ("am_inv", "午前末", 70),
+        ("pm_ship", "午後出荷", 220), ("pm_prod", "午後製造", 270), ("pm_inv", "終業在庫", 80),
     ]
 
     def __init__(self, parent, app):
@@ -664,12 +688,12 @@ class PlanScreen(Screen):
             return "手動 0" if sp.locked else ""
         tag = []
         if sp.overtime_minutes:
-            tag.append(f"残{sp.overtime_minutes}")
+            tag.append(f"残業{fmt_minutes(sp.overtime_minutes)}")
         if sp.holiday_minutes:
             tag.append("休出")
         if sp.locked:
             tag.append("手動")
-        return f"{sp.production} ({sp.total_minutes}分)" + (f" {' '.join(tag)}" if tag else "")
+        return f"{sp.production} ({fmt_minutes(sp.total_minutes)})" + (f" {' '.join(tag)}" if tag else "")
 
 
 def _enable_drag_scroll(tree: ttk.Treeview):
@@ -945,7 +969,9 @@ class SettingsScreen(Screen):
     def refresh(self):
         st = self.app.repo.get_settings()
         for key, label, unit, *_ in self.FIELDS:
-            self.value_buttons[key].configure(text=f"{_num_str(getattr(st, key))} {unit}")
+            value = getattr(st, key)
+            hint = f"（{fmt_minutes(value)}）" if unit == "分" and value >= 60 else ""
+            self.value_buttons[key].configure(text=f"{_num_str(value)} {unit}{hint}")
         self.hw_var.set("1" if st.holiday_work_enabled else "0")
         self.hw_seg.refresh()
 

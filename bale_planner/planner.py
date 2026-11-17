@@ -31,6 +31,7 @@ from .models import (
     StockReading,
     StockTiming,
     Warning_,
+    fmt_minutes,
 )
 
 PM_END = dt.time(17, 0)
@@ -297,7 +298,7 @@ def _shortage_warning(s: _SlotInfo, sp: SlotPlan, slots, st: Settings) -> Warnin
         trucks = -(-short // sh.carrier.standard_load)
         if trucks <= sh.trucks:
             sugg.append(f"{sh.carrier.name}のトラックを {trucks} 台減らす（1台 {sh.carrier.standard_load} ベール）")
-    sugg.append(f"残業上限を延長する（不足分の製造に約 {need_min} 分必要）")
+    sugg.append(f"残業上限を延長する（不足分の製造に約 {fmt_minutes(need_min)}必要）")
     if not st.holiday_work_enabled:
         sugg.append("休日出勤を有効にする")
     return Warning_(
@@ -314,11 +315,11 @@ def _add_usage_info(plan: Plan, st: Settings, warnings) -> None:
         ot = d.pm.overtime_minutes
         if ot:
             end = (dt.datetime.combine(d.date, PM_END) + dt.timedelta(minutes=ot)).time()
-            warnings.append(Warning_("info", d.date, Slot.PM, f"残業 {ot} 分（17:00〜{end:%H:%M}）を使用"))
+            warnings.append(Warning_("info", d.date, Slot.PM, f"残業 {fmt_minutes(ot)}（17:00〜{end:%H:%M}）を使用"))
         for sp in (d.am, d.pm):
             if sp.holiday_minutes:
                 warnings.append(
-                    Warning_("info", d.date, sp.slot, f"休日出勤 {sp.slot.label} {sp.holiday_minutes} 分を使用")
+                    Warning_("info", d.date, sp.slot, f"休日出勤 {sp.slot.label} {fmt_minutes(sp.holiday_minutes)}を使用")
                 )
 
 

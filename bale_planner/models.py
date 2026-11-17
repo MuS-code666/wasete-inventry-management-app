@@ -56,6 +56,16 @@ class Settings:
         return _ceil_div(bales * 60, self.bales_per_hour)
 
 
+def fmt_minutes(minutes: int) -> str:
+    """運転時間の表示用（計算は分単位のまま）。例: 130 → 2時間10分、60 → 1時間、20 → 20分。"""
+    h, m = divmod(int(minutes), 60)
+    if h and m:
+        return f"{h}時間{m}分"
+    if h:
+        return f"{h}時間"
+    return f"{m}分"
+
+
 def _ceil_div(a: float, b: float) -> int:
     q = int(a // b)
     return q if q * b >= a else q + 1

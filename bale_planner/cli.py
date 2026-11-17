@@ -15,7 +15,7 @@ import datetime as dt
 import sys
 import unicodedata
 
-from .models import Mode, Plan, ProductionLock, Shipment, Slot
+from .models import Mode, Plan, ProductionLock, Shipment, Slot, fmt_minutes
 from .planner import build_plan
 from .scenarios import SCENARIOS, Scenario
 
@@ -37,8 +37,8 @@ def _ship_label(shipments: list[Shipment], date: dt.date, slot: Slot) -> str:
 def _prod_label(production: int, minutes: int, holiday: bool, ot: int) -> str:
     if not production:
         return "-"
-    tag = "休出" if holiday else (f"残{ot}" if ot else "")
-    return f"{production}({minutes}分{tag and ' ' + tag})"
+    tag = "休出" if holiday else (f"残{fmt_minutes(ot)}" if ot else "")
+    return f"{production}({fmt_minutes(minutes)}{tag and ' ' + tag})"
 
 
 def render(plan: Plan, scenario: Scenario) -> str:

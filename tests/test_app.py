@@ -49,6 +49,10 @@ def test_stock_entry_and_production_change(app):
     main = app.screens["main"]
     assert main.target == TODAY
     assert "44 ベール" in main.prod_big.cget("text")
+    assert main.start_big.cget("text") == "40 ベール"
+    assert "始業時に入力" in main.start_detail.cget("text")
+    assert "運転 3時間20分" in main.prod_pm.cget("text")  # 200分は時間表示
+    assert "運転 20分" in main.prod_am.cget("text")
     assert str(main.btn_auto.cget("state")) == "disabled"
 
     app.set_production(TODAY, Slot.AM, 38)
@@ -61,6 +65,19 @@ def test_stock_entry_and_production_change(app):
     app.record_stock(StockTiming.END, 30)
     assert app.view.start == TODAY + dt.timedelta(days=1)
     assert "翌日" in main.day_label.cget("text")
+    assert main.start_big.cget("text") == "30 ベール"
+    assert "前日終業時に入力" in main.start_detail.cget("text")
+
+
+def test_start_inventory_is_predicted_when_not_entered(app):
+    from bale_planner.models import StockReading
+
+    app.repo.add_stock_reading(StockReading(TODAY - dt.timedelta(days=1), StockTiming.START, 25))
+    app.refresh()
+    main = app.screens["main"]
+    expected = app.view.plan.day(TODAY - dt.timedelta(days=1)).inventory_end
+    assert main.start_big.cget("text") == f"{expected} ベール"
+    assert "予測" in main.start_detail.cget("text")
 
 
 def test_mode_switch_persists(app):

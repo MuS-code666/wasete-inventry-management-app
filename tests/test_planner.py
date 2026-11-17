@@ -96,7 +96,7 @@ def test_overtime_used_only_when_needed():
     plan = run("overtime")
     pm = slot(plan, d(11, 16), PM)
     assert pm.production == 50 and pm.overtime_minutes == 30
-    assert any("残業 30 分" in w.message for w in plan.warnings)
+    assert any("残業 30分（17:00〜17:30）" in w.message for w in plan.warnings)
     assert not plan.errors
     # 通常シナリオでは残業しない
     assert all(s.overtime_minutes == 0 for s in run("normal").slots)
@@ -127,7 +127,7 @@ def test_shortage_warning_and_suggestions():
     assert err.date == d(11, 17) and err.slot is AM
     assert any("11/17 午後以降" in s for s in err.suggestions)
     assert any("A社のトラックを 1 台減らす" in s for s in err.suggestions)
-    assert any("約 170 分" in s for s in err.suggestions)
+    assert any("約 2時間50分必要" in s for s in err.suggestions)
 
 
 def test_storage_overflow_warning_grouped():
@@ -196,3 +196,12 @@ def test_today_summary():
     s = today_summary(plan, d(11, 16), sc.shipments)
     assert s["trucks"] == 1 and s["shipment_bales"] == 44
     assert s["production"] == 44 and s["inventory_end"] == 40
+
+
+def test_fmt_minutes():
+    from bale_planner.models import fmt_minutes
+
+    assert fmt_minutes(130) == "2時間10分"
+    assert fmt_minutes(60) == "1時間"
+    assert fmt_minutes(20) == "20分"
+    assert fmt_minutes(0) == "0分"

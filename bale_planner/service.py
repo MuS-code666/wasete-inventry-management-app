@@ -17,6 +17,7 @@ class PlanView:
     today: dt.date
     start: dt.date
     stale_days: int  # 実在庫の入力が何日前か（0 = 当日または前日終業時）
+    start_source: StockTiming  # 起点にした実在庫が始業時・終業時のどちらの入力か
 
     @property
     def visible_days(self):
@@ -30,6 +31,7 @@ def compute(repo: Repository, today: dt.date, mode: Mode | None = None) -> PlanV
         return None
     settings = repo.get_settings()
     start, _ = resolve_start(readings)
+    source = readings[0].timing  # 新しい順（同じ日は終業時が先）に並んでいる
     stale = max(0, (today - start).days)
     # 入力が古い場合も、今日から2週間先まで表示できるよう期間を延ばす
     settings = replace(settings, plan_days=settings.plan_days + stale)
@@ -43,7 +45,7 @@ def compute(repo: Repository, today: dt.date, mode: Mode | None = None) -> PlanV
         [l for l in repo.list_locks() if l.date >= start],
         repo.get_overrides(),
     )
-    return PlanView(plan, shipments, today, start, stale)
+    return PlanView(plan, shipments, today, start, stale, source)
 
 
 def seed_demo(repo: Repository, today: dt.date) -> None:
