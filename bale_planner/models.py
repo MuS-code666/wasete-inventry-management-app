@@ -21,10 +21,11 @@ class Slot(str, Enum):
 class Mode(str, Enum):
     MIN = "min"  # 在庫最小化（後ろ倒し）
     MAX = "max"  # 在庫最大化（前倒し）
+    TARGET = "target"  # 任意（指定した占有率を維持）
 
     @property
     def label(self) -> str:
-        return "在庫最小化" if self is Mode.MIN else "在庫最大化"
+        return {"min": "在庫最小化", "max": "在庫最大化", "target": "任意（占有率維持）"}[self.value]
 
 
 class StockTiming(str, Enum):
@@ -43,7 +44,12 @@ class Settings:
     overtime_max_minutes: int = 60  # 製造日の午後に追加できる残業時間の上限
     holiday_work_enabled: bool = True  # 休業日に休日出勤を自動で使うか
     target_end_inventory: int = 60  # 在庫最大化モードの期間末目標在庫
+    target_occupancy_pct: int = 50  # 任意モードで維持する保管上限に対する占有率（%）
     plan_days: int = 14  # 計画期間
+
+    def target_level(self) -> int:
+        """任意モードで維持する在庫数（保管上限 × 目標占有率、切り捨て）。"""
+        return self.storage_cap * max(0, min(100, self.target_occupancy_pct)) // 100
 
     def bales_for_minutes(self, minutes: int) -> int:
         """運転時間（分）で製造できるベール数（整数切り捨て）。"""

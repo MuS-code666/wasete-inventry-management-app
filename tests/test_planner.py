@@ -205,3 +205,45 @@ def test_fmt_minutes():
     assert fmt_minutes(60) == "1時間"
     assert fmt_minutes(20) == "20分"
     assert fmt_minutes(0) == "0分"
+
+
+# ---- 任意モード（占有率維持） ----------------------------------------------------
+
+
+def test_target_level():
+    assert Settings(storage_cap=130, target_occupancy_pct=50).target_level() == 65
+    assert Settings(storage_cap=130, target_occupancy_pct=70).target_level() == 91
+    assert Settings(storage_cap=130, target_occupancy_pct=150).target_level() == 130  # 100%で頭打ち
+
+
+@pytest.mark.parametrize("pct", [50, 70, 80])  # 1便(最大44)より目標水準が大きいケース
+def test_target_mode_keeps_occupancy(pct):
+    st = Settings(target_occupancy_pct=pct)
+    level = st.target_level()
+    plan = run("normal", Mode.TARGET, settings=st)
+    assert not plan.errors
+    # 通常の出荷量なら、在庫は目標水準を超えず、期間末は目標水準にそろう
+    assert max(s.inventory_end for s in plan.slots) <= level
+    assert plan.days[-1].inventory_end == level
+    # 製造日の終業時は目標水準を維持できている
+    for d in plan.days:
+        if d.am.production_day and d.date > plan.days[0].date:
+            assert d.inventory_end == level
+
+
+@pytest.mark.parametrize("key", list(SCENARIOS))
+def test_target_mode_never_behind_min_mode(key):
+    lo, tg = run(key, Mode.MIN), run(key, Mode.TARGET)
+    cum_lo = cum_tg = 0
+    for a, b in zip(lo.slots, tg.slots):
+        cum_lo += a.production
+        cum_tg += b.production
+        assert cum_tg >= cum_lo
+
+
+def test_target_mode_exceeds_level_only_when_shipment_requires():
+    st = Settings(target_occupancy_pct=50)  # 65 ベール
+    plan = run("monday_big", Mode.TARGET, settings=st)
+    assert not plan.errors  # 126 ベールの出荷は守る
+    assert plan.day(d(11, 28)).inventory_end == 126  # 出荷のために一時的に目標を超える
+    assert plan.days[-1].inventory_end == 65  # 出荷後は目標水準に戻す

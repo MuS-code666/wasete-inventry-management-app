@@ -46,7 +46,8 @@ def render(plan: Plan, scenario: Scenario) -> str:
     lines = [
         f"■ {scenario.title} ／ {plan.mode.label}",
         f"  起点在庫 {plan.start_inventory}  保管上限 {st.storage_cap}  能力 {st.bales_per_hour:g}ベール/時"
-        + (f"  期間末目標 {st.target_end_inventory}" if plan.mode is Mode.MAX else ""),
+        + (f"  期間末目標 {st.target_end_inventory}" if plan.mode is Mode.MAX else "")
+        + (f"  目標占有率 {st.target_occupancy_pct}%（{st.target_level()}）" if plan.mode is Mode.TARGET else ""),
         "  " + " | ".join([_w("日付", 10), _w("午前出荷", 26), _w("午前製造", 16), _w("午前末", 6),
                             _w("午後出荷", 26), _w("午後製造", 20), "終業在庫"]),
     ]
@@ -110,13 +111,13 @@ def main(argv: list[str] | None = None) -> None:
     p = argparse.ArgumentParser(description="ベール製造計画の試算")
     p.add_argument("scenario", nargs="?", choices=list(SCENARIOS), help="省略時は全シナリオ")
     p.add_argument("--mode", choices=[m.value for m in Mode], default="min")
-    p.add_argument("--compare", action="store_true", help="在庫最小化・最大化を両方表示")
+    p.add_argument("--compare", action="store_true", help="全モード（最小化・最大化・任意）を表示")
     p.add_argument("--lock", action="append", default=[], help="手動確定 YYYY-MM-DD:AM|PM:ベール数")
     p.add_argument("--csv", help="計画をCSVに出力")
     args = p.parse_args(argv)
 
     keys = [args.scenario] if args.scenario else list(SCENARIOS)
-    modes = [Mode.MIN, Mode.MAX] if args.compare else [Mode(args.mode)]
+    modes = list(Mode) if args.compare else [Mode(args.mode)]
     for key in keys:
         sc = SCENARIOS[key]
         locks = sc.locks + [_parse_lock(x) for x in args.lock]

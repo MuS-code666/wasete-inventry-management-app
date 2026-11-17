@@ -267,8 +267,12 @@ class App(tk.Tk):
         self.date_label = tk.Label(header, text="", font=f(16), bg=CARD, fg=MUTED)
         self.date_label.pack(side="left", padx=20)
         self.mode_var = tk.StringVar(value=repo.get_mode().value)
-        Segmented(header, [(Mode.MIN.value, "在庫最小化"), (Mode.MAX.value, "在庫最大化")], self.mode_var,
-                  command=self.change_mode, bg=CARD).pack(side="right")
+        # 任意モードのときだけ、目標占有率の変更ボタンを右端に出す
+        self.target_btn = button(header, "", self.ask_target_occupancy, size=15, padx=12, pady=6)
+        self.mode_seg = Segmented(
+            header, [(Mode.MIN.value, "在庫最小化"), (Mode.MAX.value, "在庫最大化"), (Mode.TARGET.value, "任意")],
+            self.mode_var, command=self.change_mode, bg=CARD)
+        self.mode_seg.pack(side="right")
         tk.Label(header, text="計画モード", font=f(14), bg=CARD, fg=MUTED).pack(side="right", padx=8)
 
         body = tk.Frame(self, bg=BG)
@@ -316,12 +320,36 @@ class App(tk.Tk):
         """データを読み直して計画を再計算し、表示中の画面を更新する。"""
         self.view = compute(self.repo, self.today, Mode(self.mode_var.get()))
         self.date_label.configure(text=f"今日 {self.today:%Y/%m/%d}({WEEKDAYS[self.today.weekday()]})")
+        if Mode(self.mode_var.get()) is Mode.TARGET:
+            st = self.repo.get_settings()
+            self.target_btn.configure(text=f"目標 {st.target_occupancy_pct}%（{st.target_level()}）")
+            if not self.target_btn.winfo_ismapped():
+                self.target_btn.pack(side="right", padx=(8, 0), before=self.mode_seg)
+        else:
+            self.target_btn.pack_forget()
         if self.current in self.screens:
             self.screens[self.current].refresh()
 
     def change_mode(self, value: str):
         self.repo.set_mode(Mode(value))
         self.refresh()
+
+    def set_target_occupancy(self, pct: int):
+        """任意モードで維持する占有率（%）を変更して再計算する。"""
+        st = self.repo.get_settings()
+        st.target_occupancy_pct = pct
+        self.repo.save_settings(st)
+        self.refresh()
+
+    def ask_target_occupancy(self):
+        st = self.repo.get_settings()
+        res = NumberDialog(
+            self, "目標占有率（任意モード）", initial=st.target_occupancy_pct,
+            info=f"保管上限 {st.storage_cap} ベールに対して、維持したい在庫の割合（%）を入力してください。",
+            min_value=0, max_value=100,
+        ).show()
+        if res is not None:
+            self.set_target_occupancy(res)
 
     def record_stock(self, timing: StockTiming, quantity: int, date: dt.date | None = None):
         self.repo.add_stock_reading(StockReading(date or self.today, timing, quantity))
@@ -359,6 +387,63 @@ class App(tk.Tk):
             self.set_production(date, slot, res)
 
 
+# 占有率メーターの色（塗り＝状態、残りの軌道＝同じ色相の薄い段階）
+OCC_FILL = {"normal": PRIMARY, "warn": "#fab219", "over": "#d03b3b"}
+OCC_TRACK = {"normal": "#d6e4fb", "warn": "#fdecc3", "over": "#f6d0d0"}
+OCC_WARN_PCT = 85  # これ以上で「上限に近い」
+
+
+class OccupancyRing(tk.Canvas):
+    """保管上限に対する在庫の占有率をリング（円）で示すメーター。
+
+    色だけに頼らないよう、中央に％、下に状態の文字（上限に近い／上限超過）を出す。
+    任意モードでは目標占有率の位置に目盛りを描く。
+    """
+
+    def __init__(self, parent, bg=CARD):
+        line = tkfont.Font(root=parent, font=f(14)).metrics("linespace")
+        self.size = int(line * 4.2)
+        self.label_h = int(line * 1.3)
+        super().__init__(parent, width=self.size, height=self.size + self.label_h, bg=bg, highlightthickness=0)
+        self.pct: float | None = None
+        self.state = ""
+
+    def clear(self):
+        self.delete("all")
+        self.pct, self.state = None, ""
+
+    def draw(self, value: int, cap: int, target_pct: int | None = None):
+        self.delete("all")
+        pct = value / cap * 100 if cap else 0.0
+        state = "over" if pct > 100 else ("warn" if pct >= OCC_WARN_PCT else "normal")
+        self.pct, self.state = pct, state
+        s = self.size
+        w = max(6, int(s * 0.13))
+        pad = w // 2 + 2
+        box = (pad, pad, s - pad, s - pad)
+        self.create_oval(*box, outline=OCC_TRACK[state], width=w)
+        extent = min(pct, 100) / 100 * 359.9
+        if extent > 0:
+            # 12時の位置から時計回りに塗る
+            self.create_arc(*box, start=90, extent=-extent, style="arc", outline=OCC_FILL[state], width=w)
+        if target_pct is not None:
+            import math
+
+            ang = math.radians(90 - target_pct / 100 * 360)
+            c = s / 2
+            r_out, r_in = c - pad + w / 2 + 2, c - pad - w / 2 - 2
+            self.create_line(c + r_in * math.cos(ang), c - r_in * math.sin(ang),
+                             c + r_out * math.cos(ang), c - r_out * math.sin(ang), fill=TEXT, width=3)
+        self.create_text(s / 2, s / 2 - s * 0.06, text=f"{pct:.0f}%", font=f(18, "bold"), fill=TEXT)
+        self.create_text(s / 2, s / 2 + s * 0.16, text="占有率", font=f(11), fill=MUTED)
+        status = {"over": "⚠ 上限超過", "warn": "⚠ 上限に近い"}.get(state, "")
+        if target_pct is not None and not status:
+            status = f"目標 {target_pct}%"
+        if status:
+            self.create_text(s / 2, s + self.label_h / 2, text=status, font=f(12, "bold" if state != "normal" else "normal"),
+                             fill=TEXT)
+
+
 class Screen(tk.Frame):
     def __init__(self, parent, app: App):
         super().__init__(parent, bg=BG)
@@ -392,6 +477,8 @@ class MainScreen(Screen):
         # 1日の流れの順に並べる: 始業時の在庫 → 出荷 → 製造 → 終業時の在庫
         c0 = card(grid, "始業時の在庫")
         c0.grid(row=0, column=0, sticky="nsew", padx=(0, 8))
+        self.start_ring = OccupancyRing(c0)
+        self.start_ring.pack(side="right", anchor="n", padx=(8, 0))
         self.start_big = tk.Label(c0, font=f(30, "bold"), bg=CARD, fg=TEXT)
         self.start_big.pack(anchor="w")
         self.start_detail = tk.Label(c0, font=f(14), bg=CARD, fg=MUTED, justify="left", anchor="w")
@@ -415,6 +502,8 @@ class MainScreen(Screen):
 
         c3 = card(grid, "終業時の予測在庫")
         c3.grid(row=0, column=3, sticky="nsew", padx=(8, 0))
+        self.end_ring = OccupancyRing(c3)
+        self.end_ring.pack(side="right", anchor="n", padx=(8, 0))
         self.inv_big = tk.Label(c3, font=f(30, "bold"), bg=CARD, fg=TEXT)
         self.inv_big.pack(anchor="w")
         self.inv_detail = tk.Label(c3, font=f(14), bg=CARD, fg=MUTED, justify="left", anchor="w")
@@ -458,6 +547,8 @@ class MainScreen(Screen):
                 lbl.configure(text="—")
             for lbl in (self.start_detail, self.ship_detail, self.prod_am, self.prod_pm, self.inv_detail):
                 lbl.configure(text="")
+            self.start_ring.clear()
+            self.end_ring.clear()
             self.day_label.configure(text="")
             return
 
@@ -467,9 +558,9 @@ class MainScreen(Screen):
         day = plan.day(self.target)
         st = self.app.repo.get_settings()
         if self.target == v.today:
-            self.day_label.configure(text=f"本日 {fmt_date(self.target)} の計画（{plan.mode.label}）")
+            self.day_label.configure(text=f"本日 {fmt_date(self.target)} の計画　［{plan.mode.label}］")
         else:
-            self.day_label.configure(text=f"本日の終業在庫は入力済みです。翌日 {fmt_date(self.target)} の計画（{plan.mode.label}）")
+            self.day_label.configure(text=f"本日の終業在庫は入力済みです。翌日 {fmt_date(self.target)} の計画　［{plan.mode.label}］")
         if v.stale_days >= 1:
             self._banner(f"実在庫の入力が {v.stale_days} 日前のものです。現場で数えて入力すると計画が正確になります。")
         if not wc.is_production_day(self.target, self.app.repo.get_overrides()):
@@ -478,6 +569,8 @@ class MainScreen(Screen):
         start_inv, source = self._start_inventory(v)
         self.start_big.configure(text=f"{start_inv} ベール")
         self.start_detail.configure(text=source)
+        target_pct = st.target_occupancy_pct if plan.mode is Mode.TARGET else None
+        self.start_ring.draw(start_inv, st.storage_cap, target_pct)
 
         ships = [s for s in v.shipments if s.date == self.target]
         trucks = sum(s.trucks for s in ships)
@@ -496,8 +589,9 @@ class MainScreen(Screen):
         over = day.inventory_end > st.storage_cap
         self.inv_big.configure(text=f"{day.inventory_end} ベール", fg=DANGER if over else TEXT)
         self.inv_detail.configure(
-            text=f"保管上限 {st.storage_cap}（空き {max(0, st.storage_cap - day.inventory_end)}）\n午前終了時 {day.am.inventory_end} ベール"
+            text=f"保管上限 {st.storage_cap}\n空き {max(0, st.storage_cap - day.inventory_end)} ベール\n午前終了時 {day.am.inventory_end}"
         )
+        self.end_ring.draw(day.inventory_end, st.storage_cap, target_pct)
 
         today_w = [w for w in plan.warnings if w.date == self.target]
         upcoming = [w for w in plan.errors if w.date and w.date > self.target]
@@ -518,10 +612,10 @@ class MainScreen(Screen):
         plan = v.plan
         if self.target == plan.days[0].date:
             if v.start_source is StockTiming.START:
-                return plan.start_inventory, "実在庫（始業時に入力）"
-            return plan.start_inventory, "実在庫（前日終業時に入力）"
+                return plan.start_inventory, "実在庫\n（始業時に入力）"
+            return plan.start_inventory, "実在庫\n（前日終業時に入力）"
         prev = plan.days[[d.date for d in plan.days].index(self.target) - 1]
-        return prev.inventory_end, "予測（実在庫が未入力）"
+        return prev.inventory_end, "予測\n（実在庫が未入力）"
 
     def _slot_text(self, sp):
         if not sp.production:
@@ -641,6 +735,7 @@ class PlanScreen(Screen):
         self.summary.configure(
             text=f"{v.plan.mode.label}　起点在庫 {v.plan.start_inventory}（{fmt_date(v.start)}）　保管上限 {st.storage_cap}"
             + (f"　期間末目標 {st.target_end_inventory}" if v.plan.mode is Mode.MAX else "")
+            + (f"　目標占有率 {st.target_occupancy_pct}%（{st.target_level()} ベール）" if v.plan.mode is Mode.TARGET else "")
         )
         err_slots = {(w.date, w.slot) for w in v.plan.errors}
         err_dates = {w.date for w in v.plan.errors}
@@ -903,6 +998,7 @@ class SettingsScreen(Screen):
         ("pm_minutes", "午後の稼働時間", "分", False, 0, 600),
         ("overtime_max_minutes", "残業上限（1日）", "分", False, 0, 600),
         ("target_end_inventory", "期間末目標在庫（最大化）", "ベール", False, 0, 9999),
+        ("target_occupancy_pct", "目標占有率（任意）", "%", False, 0, 100),
         ("plan_days", "計画期間", "日", False, 1, 60),
     ]
 

@@ -159,3 +159,42 @@ def test_number_dialog_logic(app):
     d.press("7")
     d.ok()
     assert d.result == 7
+
+
+def test_occupancy_rings(app):
+    seed_demo(app.repo, TODAY)
+    app.refresh()
+    main = app.screens["main"]
+    st = app.repo.get_settings()
+    day = app.view.plan.day(TODAY)
+    assert main.start_ring.pct == pytest.approx(40 / st.storage_cap * 100)
+    assert main.end_ring.pct == pytest.approx(day.inventory_end / st.storage_cap * 100)
+    assert main.start_ring.state == "normal"
+    app.screens["settings"].update_setting("storage_cap", 45)  # 40/45 = 89% → 上限に近い
+    app.show("main")
+    assert main.start_ring.state == "warn"
+    app.screens["settings"].update_setting("storage_cap", 30)  # 40/30 → 上限超過
+    app.show("main")
+    assert main.start_ring.state == "over"
+
+
+def test_target_mode_in_ui(app):
+    seed_demo(app.repo, TODAY)
+    app.refresh()
+    assert not app.target_btn.winfo_ismapped()
+    app.mode_var.set(Mode.TARGET.value)
+    app.change_mode(Mode.TARGET.value)
+    app.deiconify()
+    app.update()
+    assert app.target_btn.winfo_ismapped()
+    assert "目標 50%（65）" in app.target_btn.cget("text")
+    app.set_target_occupancy(70)
+    assert app.repo.get_settings().target_occupancy_pct == 70
+    assert "目標 70%（91）" in app.target_btn.cget("text")
+    assert app.view.plan.mode is Mode.TARGET
+    assert app.view.plan.days[-1].inventory_end == 91
+    app.mode_var.set(Mode.MIN.value)
+    app.change_mode(Mode.MIN.value)
+    app.update()
+    assert not app.target_btn.winfo_ismapped()
+    app.withdraw()

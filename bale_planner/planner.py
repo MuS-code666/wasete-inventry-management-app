@@ -87,8 +87,15 @@ def build_plan(
     # 2) モード別の製造数
     if mode is Mode.MIN:
         production = lower
+    elif mode is Mode.MAX:
+        # 保管上限まで前倒しし、期間末は目標在庫にそろえる
+        production = _forward_schedule(slots, inv0, lower, st, warnings, st.storage_cap,
+                                       min(st.target_end_inventory, st.storage_cap), "目標在庫")
     else:
-        production = _maximum_schedule(slots, inv0, lower, st, warnings)
+        # 任意：指定した占有率の在庫水準を保つ（期間末も同じ水準）
+        level = st.target_level()
+        production = _forward_schedule(slots, inv0, lower, st, warnings, level, level,
+                                       f"目標占有率 {st.target_occupancy_pct}%（{level} ベール）")
 
     plan = _simulate(slots, inv0, production, st, mode, warnings)
     _add_usage_info(plan, st, warnings)
@@ -170,13 +177,14 @@ def _minimum_schedule(slots: list[_SlotInfo], inv0: int) -> list[int]:
     return production
 
 
-def _maximum_schedule(slots, inv0, lower, st: Settings, warnings) -> list[int]:
-    """保管上限を守りつつ前倒しで製造し、期間末に目標在庫になるようにする。
+def _forward_schedule(slots, inv0, lower, st: Settings, warnings, level: int, target: int, target_label: str) -> list[int]:
+    """在庫水準 level まで前倒しで製造し、期間末に target になるようにする。
 
-    最小計画の累計（lower）を常に下回らないので、出荷期限は必ず守られる。
+    在庫最大化は level = 保管上限、任意モードは level = 目標占有率の在庫数。
+    最小計画の累計（lower）を常に下回らないので、出荷期限は必ず守られる
+    （そのために一時的に level を超えることはある）。
     前倒し分は通常稼働時間内だけで作り、残業・休日出勤は最小計画が必要とする分だけ使う。
     """
-    target = min(st.target_end_inventory, st.storage_cap)
     # 最小計画でも出荷できない分（不足）は、前倒ししても出荷できないため製造目標から除く
     inv = inv0
     total_ship = 0
@@ -199,7 +207,7 @@ def _maximum_schedule(slots, inv0, lower, st: Settings, warnings) -> list[int]:
         if s.lock is not None:
             p = s.lock
         else:
-            room = max(0, st.storage_cap - inv)
+            room = max(0, level - inv)
             remaining = max(0, total_prod - cum - future_locks[i + 1])
             desired = min(s.reg_cap, room, remaining)
             p = max(desired, lower_cum - cum)
@@ -214,8 +222,8 @@ def _maximum_schedule(slots, inv0, lower, st: Settings, warnings) -> list[int]:
                 "info",
                 slots[-1].date,
                 None,
-                f"期間末の予測在庫 {end_inv} ベールは目標在庫 {target} ベールに届きません",
-                ["目標在庫を見直す", "残業・休日出勤で追加製造する"],
+                f"期間末の予測在庫 {end_inv} ベールは{target_label}に届きません",
+                [f"{target_label.split('（')[0]}を見直す", "残業・休日出勤で追加製造する"],
             )
         )
     return production
