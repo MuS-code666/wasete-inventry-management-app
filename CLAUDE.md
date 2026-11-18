@@ -25,7 +25,7 @@
 ## コマンド
 
 ```sh
-python -m venv .venv && .venv/Scripts/python -m pip install -r requirements.txt
+python -m venv .venv && .venv/Scripts/python -m pip install -r requirements-dev.txt   # 実行用は requirements.txt（jpholiday のみ）
 .venv/Scripts/python -m pytest -q                         # テスト
 .venv/Scripts/python -m bale_planner.cli normal --compare # シナリオを両モードで表示
 .venv/Scripts/python -m bale_planner.app --demo           # デモデータで画面を起動（DBは一時）

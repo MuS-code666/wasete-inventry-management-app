@@ -1,2 +1,1 @@
-jpholiday
-pytest
+jpholiday==1.0.3

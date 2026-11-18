@@ -65,7 +65,7 @@ build_installer.bat
 
 ```
 python -m venv .venv
-.venv\Scripts\python -m pip install -r requirements.txt -r requirements-build.txt
+.venv\Scripts\python -m pip install -r requirements-build.txt
 winget install JRSoftware.InnoSetup --scope user
 ```
 

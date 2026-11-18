@@ -31,9 +31,11 @@ Python 本体は Python 公式の署名付きなので、スマート アプリ 
 
 ### 1-1. Python のインストーラを用意する（顧客PCがオフラインの場合）
 
-1. https://www.python.org/downloads/windows/ を開く
-2. **Python 3.12 の最新版** の「Windows installer (64-bit)」をダウンロードする
-   （ファイル名の例: `python-3.12.10-amd64.exe`）
+1. 次の URL から **Python 3.12.10** の Windows インストーラ（64ビット）をダウンロードする
+   https://www.python.org/ftp/python/3.12.10/python-3.12.10-amd64.exe
+   - 3.12 はセキュリティ修正のみの期間に入っており、3.12.11 以降は Windows 用インストーラが提供されていません。
+     3.12.10 が Windows インストーラのある最後の 3.12 です（開発環境と同じバージョン）
+2. （任意）ファイルを右クリック →「プロパティ」→「デジタル署名」で、署名者が **Python Software Foundation** であることを確認する
 
 > 顧客PCがインターネットにつながる場合は、この手順は省略して顧客PCで直接ダウンロードしても構いません。
 

@@ -3,7 +3,7 @@
 # 出力: dist\BalePlanner-Setup-<version>.exe
 #
 # 必要なもの（開発PCのみ。インストール先のPCには不要）
-#   - .venv（requirements.txt と requirements-build.txt をインストール済み）
+#   - .venv（requirements-build.txt をインストール済み）
 #   - Inno Setup 6（winget install JRSoftware.InnoSetup --scope user）
 
 $ErrorActionPreference = "Stop"
