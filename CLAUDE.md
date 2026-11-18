@@ -31,6 +31,7 @@ python -m venv .venv && .venv/Scripts/python -m pip install -r requirements.txt
 .venv/Scripts/python -m bale_planner.app --demo           # デモデータで画面を起動（DBは一時）
 .venv/Scripts/python -m bale_planner.app                  # 通常起動（%LOCALAPPDATA%/BalePlanner に保存）
 build_installer.bat                                       # インストーラ作成 → dist/BalePlanner-Setup-<version>.exe
+powershell -ExecutionPolicy Bypass -File installer\make_python_kit.ps1  # Python版キット作成（署名なしでSAC対策）→ docs/install_python.md
 ```
 
 リリース時は `bale_planner/__init__.py` の `__version__` を上げてからインストーラを作成する。

@@ -1,0 +1,187 @@
+# Python版の導入手順（インストーラを使わない方法）
+
+ベール製造計画を、Python から直接起動する形で顧客PCに導入する手順です。
+
+**この方法を使う場面**
+
+- 顧客PCで Windows 11 の「スマート アプリ コントロール」が **オン** になっていて、
+  インストーラ版（`BalePlanner-Setup-*.exe`）が「アプリ制御ポリシーによってブロックされました」となる場合
+- コード署名を用意するまでのつなぎ
+
+Python 本体は Python 公式の署名付きなので、スマート アプリ コントロールが有効でも起動できる見込みが高い方法です
+（開発PC＝スマート アプリ コントロール有効 で動作を確認済み。ただし全てのPCでの動作を保証するものではありません）。
+
+---
+
+## 全体の流れ
+
+| 場所 | 作業 | 所要時間の目安 |
+| --- | --- | --- |
+| 開発PC | ① キット（持っていくファイル一式）を作る | 5分 |
+| 顧客PC | ② Python をインストールする | 5分 |
+| 顧客PC | ③ キットをコピーして `setup_env.bat` を実行する | 3分 |
+| 顧客PC | ④ 起動・ショートカット作成・初期設定 | 10分 |
+
+顧客PCでの作業に **インターネット接続は不要** です（Python のインストーラをキットに同梱した場合）。
+管理者権限も不要です。
+
+---
+
+## ① 開発PCでキットを作る
+
+### 1-1. Python のインストーラを用意する（顧客PCがオフラインの場合）
+
+1. https://www.python.org/downloads/windows/ を開く
+2. **Python 3.12 の最新版** の「Windows installer (64-bit)」をダウンロードする
+   （ファイル名の例: `python-3.12.10-amd64.exe`）
+
+> 顧客PCがインターネットにつながる場合は、この手順は省略して顧客PCで直接ダウンロードしても構いません。
+
+### 1-2. キットを作成する
+
+プロジェクトのフォルダで PowerShell を開き、次を実行します（`-PythonInstaller` は 1-1 のファイル）。
+
+```powershell
+powershell -ExecutionPolicy Bypass -File installer\make_python_kit.ps1 -PythonInstaller C:\Users\<ユーザー名>\Downloads\python-3.12.10-amd64.exe
+```
+
+テストを実行したうえで、次の2つが作られます。
+
+```
+dist\BalePlanner-PythonKit-<バージョン>\      … キット本体
+dist\BalePlanner-PythonKit-<バージョン>.zip   … 上を ZIP にしたもの（持ち運び用）
+```
+
+キットの中身:
+
+| ファイル・フォルダ | 内容 |
+| --- | --- |
+| `bale_planner\` | アプリ本体 |
+| `wheels\` | オフラインで入れるための追加パッケージ（jpholiday） |
+| `requirements.txt` | 必要なパッケージの一覧 |
+| `setup_env.bat` | 顧客PCでの初回セットアップ（ダブルクリック） |
+| `start_app.bat` | 通常の起動 |
+| `start_app_fullscreen.bat` | タブレット向け全画面の起動 |
+| `README.txt` | 手順の要約 |
+| `install_python.md` | この手順書 |
+| `python-3.12.*-amd64.exe` | Python のインストーラ（同梱した場合） |
+
+ZIP を USB メモリなどで顧客PCに持っていきます。
+
+---
+
+## ② 顧客PCに Python をインストールする
+
+> すでに Python 3.11 以降が入っている場合は省略できます。
+> 確認方法: コマンドプロンプトで `py --version` と入力し、`Python 3.11` 以上が表示されれば OK。
+
+1. `python-3.12.*-amd64.exe` をダブルクリックする
+2. 最初の画面の下にある **「Add python.exe to PATH」にチェック** を入れる
+   （「Use admin privileges when installing py.exe」は、管理者権限がなければチェックを外す）
+3. **「Install Now」** を押す
+4. 「Setup was successful」と表示されたら **Close** を押す
+
+> 「Install Now」の標準設定には、画面表示に必要な tcl/tk が含まれています。
+> 「Customize installation」を選んだ場合は、**「tcl/tk and IDLE」のチェックを外さない** でください。
+
+---
+
+## ③ キットをコピーしてセットアップする
+
+1. ZIP を右クリック →「すべて展開」で展開する
+2. 展開したフォルダを **分かりやすい場所に置く**（例: `C:\BalePlanner`）
+   - デスクトップや「ダウンロード」フォルダのままでも動きますが、誤って削除しないよう専用の場所を推奨します
+   - 置き場所は後から動かさないでください（動かした場合は `setup_env.bat` をもう一度実行）
+3. フォルダ内の **`setup_env.bat` をダブルクリック** する
+4. 黒い画面に次のように表示され、最後に **`SETUP COMPLETED.`** と出れば完了です。何かキーを押して閉じます。
+
+```
+[1/4] Checking Python...
+      Python 3.12.10 C:\Users\...\Python312\python.exe
+[2/4] Creating virtual environment (.venv)...
+[3/4] Installing packages from .\wheels (no internet needed)...
+[4/4] Self check...
+version: 0.1.0
+frozen: False
+OK   jpholiday: 2026-11-23 祝日=True
+OK   sqlite+planner: 14日分の計画, 警告0件
+OK   tkinter: 画面の初期化に成功
+OK   icon: True
+RESULT: OK
+
+===========================================================================
+ SETUP COMPLETED.  Start the app with start_app.bat
+===========================================================================
+```
+
+`ERROR:` と表示された場合は、後述の「困ったときは」を参照してください。
+
+---
+
+## ④ 起動・ショートカット作成・初期設定
+
+### 起動
+
+- **`start_app.bat`** をダブルクリック … 通常の起動
+- **`start_app_fullscreen.bat`** をダブルクリック … タブレット向けの全画面（F11 で切り替え）
+
+### デスクトップにショートカットを作る
+
+1. `start_app.bat`（または `start_app_fullscreen.bat`）を右クリック
+2. 「その他のオプションを確認」→「送る」→「デスクトップ (ショートカットを作成)」
+3. 必要に応じてショートカットの名前を「ベール製造計画」に変更
+4. （任意）ショートカットを右クリック →「プロパティ」→「アイコンの変更」→「参照」で
+   `bale_planner\assets\app.ico` を選ぶと、アプリのアイコンになります
+
+### 初期設定（初回のみ）
+
+1. 「設定」画面で、保管上限・製造能力・稼働時間・運搬業者を現場の値に変更する
+2. 「今日」画面の「実在庫を入力」から、現在の在庫を登録する
+3. 「出荷予定」画面で出荷予定を登録する
+
+---
+
+## データの保存場所とバックアップ
+
+入力したデータは、アプリのフォルダではなく次の場所に保存されます（インストーラ版と共通）。
+
+```
+%LOCALAPPDATA%\BalePlanner\bale_planner.db
+```
+
+- エクスプローラーのアドレス欄に `%LOCALAPPDATA%\BalePlanner` と入力すると開けます
+- アプリを終了した状態でこのファイルをコピーすればバックアップになります
+- アプリのフォルダを入れ替えても、データはそのまま引き継がれます
+
+---
+
+## アップデート（新しいバージョンにする）
+
+1. アプリを終了する
+2. 新しいキットを展開し、**古いフォルダと入れ替える**（同じ場所に置く）
+3. 新しいフォルダで `setup_env.bat` を実行する
+4. デスクトップのショートカットは、同じ場所に置いていればそのまま使えます
+
+データ（`%LOCALAPPDATA%\BalePlanner`）は消えません。
+
+## 削除する
+
+1. アプリのフォルダ（例: `C:\BalePlanner`）とデスクトップのショートカットを削除する
+2. データも消す場合は `%LOCALAPPDATA%\BalePlanner` フォルダを削除する
+3. Python が不要になった場合は「設定」→「アプリ」から「Python 3.12」をアンインストールする
+
+---
+
+## 困ったときは
+
+| 表示・症状 | 原因と対処 |
+| --- | --- |
+| `ERROR: Python 3.11 or later was not found.` | Python が入っていない、または古い。② の手順で Python 3.12 を入れて、`setup_env.bat` をもう一度実行する。インストール直後なら、一度サインアウトしてから再実行する |
+| `py --version` で Microsoft Store が開く | Windows 標準の「アプリ実行エイリアス」が反応している。② の手順で python.org の Python を入れれば解消する |
+| `ERROR: tkinter is not available` | Python に画面表示用の部品（tcl/tk）が入っていない。Python のインストーラを再実行 →「Modify」→「tcl/tk and IDLE」にチェック → 完了後に `setup_env.bat` を再実行 |
+| `ERROR: setup failed.` で `No matching distribution` など | `wheels` フォルダが無い・中身が空。キットを作り直すか、`wheels` フォルダごとコピーし直す |
+| `start_app.bat` を押しても何も起きない | `setup_env.bat` が未実行、またはフォルダを移動した。`setup_env.bat` を実行し直す |
+| 「アプリ制御ポリシーによってブロックされました」 | スマート アプリ コントロールにより Python 自体が止められている（通常は起きない）。どのファイルが止められたかを控えて開発担当に連絡する |
+| 画面の文字が小さい／大きい | Windows の「設定」→「ディスプレイ」→「拡大/縮小」で調整する |
+
+原因が分からない場合は、`setup_env.bat` の黒い画面の表示（または同じフォルダにできる `setup_check.txt`）を開発担当に送ってください。
